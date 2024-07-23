@@ -1,0 +1,88 @@
+_schema-version: '3.1'
+ID: cescoui5app01
+version: 1.0.0
+description: "A simple CAP project."
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm ci
+        - npx cds build --production
+modules:
+  - name: cescoui5app01-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      buildpack: nodejs_buildpack
+      readiness-health-check-type: http
+      readiness-health-check-http-endpoint: /health
+    build-parameters:
+      builder: npm
+    provides:
+      - name: srv-api # required by consumers of CAP services (e.g. approuter)
+        properties:
+          srv-url: ${default-url}
+    requires:
+      - name: cescoui5app01-auth
+      - name: cescoui5app01-db
+      - name: s4hc-api-access
+      - name: s4hc-destination
+
+  - name: cescoui5app01-db-deployer
+    type: hdb
+    path: gen/db
+    parameters:
+      buildpack: nodejs_buildpack
+    requires:
+      - name: cescoui5app01-db
+
+resources:
+  - name: cescoui5app01-auth
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      config:
+        xsappname: cescoui5app01-${org}-${space}
+        tenant-mode: dedicated
+  - name: cescoui5app01-db
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+
+  - name: s4hc-api-access
+    type: org.cloudfoundry.managed-service
+    parameters:
+      skip-service-updates:
+        plan: true
+        parameters: true
+        tags: true
+      service: s4-hana-cloud
+      service-plan: api-access
+      system-name: CESCO_DEV_S4_HANA_CLOUD
+      path: ./bupa-service-config.json
+      config:
+        systemName: CESCO_DEV_S4_HANA_CLOUD
+
+  - name: s4hc-destination
+    type: org.cloudfoundry.managed-service
+    parameters:
+      config:
+        HTML5Runtime_enabled: false
+        init_data:
+          instance:
+            destinations:
+            - Authentication: NoAuthentication
+              Name: ui5
+              ProxyType: Internet
+              Type: HTTP
+              URL: https://ui5.sap.com
+            existing_destinations_policy: update
+        version: 1.0.0
+      service: destination
+      service-name: s4hc-destination
+      service-plan: lite        
